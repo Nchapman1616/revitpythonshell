@@ -43,3 +43,50 @@ class WindowWrapper(object):
     def __getattr__(self, name):
         return getattr(self.win, name)
 __window__ = WindowWrapper(__window__)
+
+#------------------------------------------------------------------------------
+import clr
+from Autodesk.Revit.DB import ElementSet, ElementId
+
+class RevitLookup(object):
+    def __init__(self, uiApplication):
+        '''
+        for RevitSnoop to function properly, it needs to be instantiated
+        with a reference to the Revit Application object.
+        '''
+        # find the RevitLookup plugin
+        try:
+            rlapp = [app for app in uiApplication.LoadedApplications
+                     if app.GetType().Namespace == 'RevitLookup'
+                     and app.GetType().Name == 'App'][0]
+        except IndexError:
+            self.RevitLookup = None
+            return
+        # tell IronPython about the assembly of the RevitLookup plugin
+        clr.AddReference(rlapp.GetType().Assembly)
+        import RevitLookup
+        self.RevitLookup = RevitLookup
+        # See note in CollectorExt.cs in the RevitLookup source:
+        self.RevitLookup.Snoop.CollectorExts.CollectorExt.m_app = uiApplication
+        self.revit = uiApplication
+
+    def lookup(self, element):
+        if not self.RevitLookup:
+            print 'RevitLookup not installed. Visit https://github.com/jeremytammik/RevitLookup to install.'
+            return
+        if isinstance(element, int):
+            element = self.revit.ActiveUIDocument.Document.GetElement(ElementId(element))
+        if isinstance(element, ElementId):
+            element = self.revit.ActiveUIDocument.Document.GetElement(element)
+        if isinstance(element, list):
+            elementSet = ElementSet()
+            for e in element:
+                elementSet.Insert(e)
+            element = elementSet
+        form = self.RevitLookup.Snoop.Forms.Objects(element)
+        form.ShowDialog()
+_revitlookup = RevitLookup(__revit__)
+def lookup(element):
+    _revitlookup.lookup(element)
+
+#------------------------------------------------------------------------------
